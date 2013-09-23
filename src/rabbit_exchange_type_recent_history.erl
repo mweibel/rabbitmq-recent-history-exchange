@@ -35,7 +35,7 @@ description() ->
 serialise_events() -> false.
 
 route(#exchange{name = XName}, #delivery{message = #basic_message{content = Content}}) ->
-    cache_msg(XName, Content),
+    maybe_cache_msg(XName, Content),
     rabbit_router:match_routing_key(XName, ['_']).
 
 validate(_X) -> ok.
@@ -81,18 +81,26 @@ setup_schema() ->
     end.
 
 %%private
-cache_msg(XName, #content{properties = #'P_basic'{headers = Headers}} = Content) ->
-    Store = table_lookup(Headers, <<"X-Recent-History-Store">>),
-    case Store of
-        {bool, false} ->
-            ok;
+maybe_cache_msg(XName, #content{properties = #'P_basic'{headers = Headers}} = Content) ->
+    case Headers of
+        undefined ->
+            cache_msg(XName, Content);
         _ ->
-            rabbit_misc:execute_mnesia_transaction(
-              fun () ->
-                      Cached = get_msgs_from_cache(XName),
-                      store_msg(XName, Cached, Content)
-              end)
+            Store = table_lookup(Headers, <<"X-Recent-History-Store">>),
+            case Store of
+                {bool, false} ->
+                    ok;
+                _ ->
+                    cache_msg(XName, Content)
+            end
     end.
+
+cache_msg(XName, Content) ->
+    rabbit_misc:execute_mnesia_transaction(
+      fun () ->
+              Cached = get_msgs_from_cache(XName),
+              store_msg(XName, Cached, Content)
+      end).
 
 get_msgs_from_cache(XName) ->
     rabbit_misc:execute_mnesia_transaction(
