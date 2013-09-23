@@ -1,7 +1,10 @@
 -module(rabbit_exchange_type_recent_history).
 -include_lib("rabbit_common/include/rabbit.hrl").
+-include_lib("rabbit_common/include/rabbit_framing.hrl").
 
 -behaviour(rabbit_exchange_type).
+
+-import(rabbit_misc, [table_lookup/2]).
 
 -export([description/0, serialise_events/0, route/2]).
 -export([validate/1, validate_binding/2, create/2, delete/3, add_binding/3,
@@ -78,12 +81,18 @@ setup_schema() ->
     end.
 
 %%private
-cache_msg(XName, Content) ->
-    rabbit_misc:execute_mnesia_transaction(
-      fun () ->
-              Cached = get_msgs_from_cache(XName),
-              store_msg(XName, Cached, Content)
-      end).
+cache_msg(XName, #content{properties = #'P_basic'{headers = Headers}} = Content) ->
+    Store = table_lookup(Headers, <<"X-Recent-History-Store">>),
+    case Store of
+        {bool, false} ->
+            rabbit_misc:execute_mnesia_transaction(
+              fun () ->
+                      Cached = get_msgs_from_cache(XName),
+                      store_msg(XName, Cached, Content)
+              end);
+        _ ->
+            ok
+    end.
 
 get_msgs_from_cache(XName) ->
     rabbit_misc:execute_mnesia_transaction(
