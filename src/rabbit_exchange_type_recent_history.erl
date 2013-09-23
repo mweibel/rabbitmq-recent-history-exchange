@@ -85,13 +85,13 @@ cache_msg(XName, #content{properties = #'P_basic'{headers = Headers}} = Content)
     Store = table_lookup(Headers, <<"X-Recent-History-Store">>),
     case Store of
         {bool, false} ->
+            ok;
+        _ ->
             rabbit_misc:execute_mnesia_transaction(
               fun () ->
                       Cached = get_msgs_from_cache(XName),
                       store_msg(XName, Cached, Content)
-              end);
-        _ ->
-            ok
+              end)
     end.
 
 get_msgs_from_cache(XName) ->
